@@ -7,6 +7,9 @@ import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -33,6 +36,10 @@ public class ForecastFragment extends Fragment {
     private String TAG = ForecastFragment.class.getSimpleName();
     private static final String ARG_PARAM1 = "param1";
     private static final String ARG_PARAM2 = "param2";
+
+    private static String mPostalZip = "94043";
+    private static String mUnits = "metric";
+    private static int mResultCount = 7;
 
     ArrayAdapter<String> mForecastAdapter;
 
@@ -61,6 +68,7 @@ public class ForecastFragment extends Fragment {
         args.putString(ARG_PARAM1, param1);
         args.putString(ARG_PARAM2, param2);
         fragment.setArguments(args);
+
         return fragment;
     }
 
@@ -71,6 +79,7 @@ public class ForecastFragment extends Fragment {
             mParam1 = getArguments().getString(ARG_PARAM1);
             mParam2 = getArguments().getString(ARG_PARAM2);
         }
+        setHasOptionsMenu(true);
     }
 
     @Override
@@ -97,16 +106,11 @@ public class ForecastFragment extends Fragment {
 
         listView.setAdapter(mForecastAdapter);
 
-        String postalZip = "94043";
-        String units = "metric";
-        int resultCount = 7;
-
         try {
-            String baseUrl = String.format(Constants.WEATHER_URL, postalZip, units, resultCount);
-            String apiKey = "&APPID=" + Constants.OPENWEATHER_API_KEY;
-            URL url = new URL(baseUrl.concat(apiKey));
-
-            new FetchWeatherTask().execute(url);
+            URL url = getURL();
+            if (url != null) {
+                new FetchWeatherTask().execute(getURL());
+            }
 
         } catch (Exception e) {
             Log.e(TAG, e.getMessage());
@@ -114,6 +118,18 @@ public class ForecastFragment extends Fragment {
 
 
         return rootView;
+    }
+
+    private URL getURL() {
+        try {
+            String baseUrl = String.format(Constants.WEATHER_URL, mPostalZip, mUnits, mResultCount);
+            String apiKey = "&APPID=" + Constants.OPENWEATHER_API_KEY;
+            URL url = new URL(baseUrl.concat(apiKey));
+            return url;
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
+            return null;
+        }
     }
 
     // TODO: Rename method, update argument and hook method into UI event
@@ -155,9 +171,37 @@ public class ForecastFragment extends Fragment {
         void onFragmentInteraction(Uri uri);
     }
 
-    public class FetchWeatherTask extends AsyncTask<URL, Void, String> {
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        // Inflate the menu; this adds items to the action bar if it is present.
+        inflater.inflate(R.menu.forecastfragment, menu);
+        //return true;
+    }
 
-        protected String doInBackground(URL... urls) {
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        // Handle action bar item clicks here. The action bar will
+        // automatically handle clicks on the Home/Up button, so long
+        // as you specify a parent activity in AndroidManifest.xml.
+        int id = item.getItemId();
+
+        //noinspection SimplifiableIfStatement
+        if (id == R.id.action_refresh) {
+            URL url = getURL();
+            if (url != null) {
+                new FetchWeatherTask().execute(getURL());
+            }
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
+    public class FetchWeatherTask extends AsyncTask<URL, Void, Void> {
+
+        private String TAG = FetchWeatherTask.class.getSimpleName();
+
+        protected Void doInBackground(URL... urls) {
             // these two need to be declared outside the try/catch
             // so that they can be closed in the finally block
             HttpURLConnection urlConnection = null;
@@ -170,43 +214,39 @@ public class ForecastFragment extends Fragment {
                 // construct the URL for the OpenWeatherMap query
                 // possible parameters are available on OWM's forecast API page, at
                 // http://openweathermap.org/API#forecast
-                String postalZip = "94043";
-                String units = "metric";
-                int resultCount = 7;
-                String baseUrl = String.format(Constants.WEATHER_URL, postalZip, units, resultCount);
-                String apiKey = "&APPID=" + Constants.OPENWEATHER_API_KEY;
-                URL url = new URL(baseUrl.concat(apiKey));
+                URL url = urls[0];
+                if (url != null) {
+                    // create the requests to OpenWeatherMap, and open the connection
+                    urlConnection = (HttpURLConnection) url.openConnection();
+                    urlConnection.setRequestMethod("GET");
+                    urlConnection.connect();
 
-                // create the requests to OpenWeatherMap, and open the connection
-                urlConnection = (HttpURLConnection) url.openConnection();
-                urlConnection.setRequestMethod("GET");
-                urlConnection.connect();
+                    // read the input stream into a string
+                    InputStream inputStream = urlConnection.getInputStream();
+                    StringBuffer buffer = new StringBuffer();
 
-                // read the input stream into a string
-                InputStream inputStream = urlConnection.getInputStream();
-                StringBuffer buffer = new StringBuffer();
+                    if (inputStream == null) {
+                        // nothing to do
+                        return null;
+                    }
 
-                if (inputStream == null) {
-                    // nothing to do
-                    return null;
+                    reader = new BufferedReader(new InputStreamReader(inputStream));
+
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        // since it's JSON, adding a newline isn't necessary (it won't affect parsing)
+                        // but it does make debugging a *lot* easier if you print out the completed
+                        // buffer for debugging
+                        buffer.append(line + "\n");
+                    }
+
+                    if (buffer.length() == 0) {
+                        // stream was empty. no point in parsing
+                        return null;
+                    }
+
+                    forecastJsonStr = buffer.toString();
                 }
-
-                reader = new BufferedReader(new InputStreamReader(inputStream));
-
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    // since it's JSON, adding a newline isn't necessary (it won't affect parsing)
-                    // but it does make debugging a *lot* easier if you print out the completed
-                    // buffer for debugging
-                    buffer.append(line + "\n");
-                }
-
-                if (buffer.length() == 0) {
-                    // stream was empty. no point in parsing
-                    return null;
-                }
-
-                forecastJsonStr = buffer.toString();
 
             } catch (IOException e) {
                 Log.e(TAG, "Error: ", e);
@@ -226,12 +266,14 @@ public class ForecastFragment extends Fragment {
                 }
             }
 
-            return forecastJsonStr;
+
+            //return forecastJsonStr;
+            return null;
         }
 
-        protected void onPostExecute(String result) {
-            //return result;
-        }
+//        protected void onPostExecute(String result) {
+//            //return result;
+//        }
 
     }
 }
