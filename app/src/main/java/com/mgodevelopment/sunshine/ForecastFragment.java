@@ -2,6 +2,7 @@ package com.mgodevelopment.sunshine;
 
 import android.content.Context;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.util.Log;
@@ -96,73 +97,21 @@ public class ForecastFragment extends Fragment {
 
         listView.setAdapter(mForecastAdapter);
 
-        // these two need to be declared outside the try/catch
-        // so that they can be closed in the finally block
-        HttpURLConnection urlConnection = null;
-        BufferedReader reader = null;
-
-        // will contain the raw JSON response as a string
-        String forecastJsonStr = null;
+        String postalZip = "94043";
+        String units = "metric";
+        int resultCount = 7;
 
         try {
-            // construct the URL for the OpenWeatherMap query
-            // possible parameters are available on OWM's forecast API page, at
-            // http://openweathermap.org/API#forecast
-            String postalZip = "94043";
-            String units = "metric";
-            int resultCount = 7;
             String baseUrl = String.format(Constants.WEATHER_URL, postalZip, units, resultCount);
             String apiKey = "&APPID=" + Constants.OPENWEATHER_API_KEY;
             URL url = new URL(baseUrl.concat(apiKey));
 
-            // create the requests to OpenWeatherMap, and open the connection
-            urlConnection = (HttpURLConnection) url.openConnection();
-            urlConnection.setRequestMethod("GET");
-            urlConnection.connect();
+            new FetchWeatherTask().execute(url);
 
-            // read the input stream into a string
-            InputStream inputStream = urlConnection.getInputStream();
-            StringBuffer buffer = new StringBuffer();
-
-            if (inputStream == null) {
-                // nothing to do
-                return null;
-            }
-
-            reader = new BufferedReader(new InputStreamReader(inputStream));
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                // since it's JSON, adding a newline isn't necessary (it won't affect parsing)
-                // but it does make debugging a *lot* easier if you print out the completed
-                // buffer for debugging
-                buffer.append(line + "\n");
-            }
-
-            if (buffer.length() == 0) {
-                // stream was empty. no point in parsing
-                return null;
-            }
-
-            forecastJsonStr = buffer.toString();
-
-        } catch (IOException e) {
-            Log.e(TAG, "Error: ", e);
-            // If the code didn't successfully get the weather data, there's no point in attemping
-            // to parse it.
-            return null;
-        } finally {
-            if (urlConnection != null) {
-                urlConnection.disconnect();
-            }
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (final IOException e) {
-                    Log.e(TAG, "Error closing stream", e);
-                }
-            }
+        } catch (Exception e) {
+            Log.e(TAG, e.getMessage());
         }
+
 
         return rootView;
     }
@@ -204,5 +153,85 @@ public class ForecastFragment extends Fragment {
     public interface OnFragmentInteractionListener {
         // TODO: Update argument type and name
         void onFragmentInteraction(Uri uri);
+    }
+
+    public class FetchWeatherTask extends AsyncTask<URL, Void, String> {
+
+        protected String doInBackground(URL... urls) {
+            // these two need to be declared outside the try/catch
+            // so that they can be closed in the finally block
+            HttpURLConnection urlConnection = null;
+            BufferedReader reader = null;
+
+            // will contain the raw JSON response as a string
+            String forecastJsonStr = null;
+
+            try {
+                // construct the URL for the OpenWeatherMap query
+                // possible parameters are available on OWM's forecast API page, at
+                // http://openweathermap.org/API#forecast
+                String postalZip = "94043";
+                String units = "metric";
+                int resultCount = 7;
+                String baseUrl = String.format(Constants.WEATHER_URL, postalZip, units, resultCount);
+                String apiKey = "&APPID=" + Constants.OPENWEATHER_API_KEY;
+                URL url = new URL(baseUrl.concat(apiKey));
+
+                // create the requests to OpenWeatherMap, and open the connection
+                urlConnection = (HttpURLConnection) url.openConnection();
+                urlConnection.setRequestMethod("GET");
+                urlConnection.connect();
+
+                // read the input stream into a string
+                InputStream inputStream = urlConnection.getInputStream();
+                StringBuffer buffer = new StringBuffer();
+
+                if (inputStream == null) {
+                    // nothing to do
+                    return null;
+                }
+
+                reader = new BufferedReader(new InputStreamReader(inputStream));
+
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // since it's JSON, adding a newline isn't necessary (it won't affect parsing)
+                    // but it does make debugging a *lot* easier if you print out the completed
+                    // buffer for debugging
+                    buffer.append(line + "\n");
+                }
+
+                if (buffer.length() == 0) {
+                    // stream was empty. no point in parsing
+                    return null;
+                }
+
+                forecastJsonStr = buffer.toString();
+
+            } catch (IOException e) {
+                Log.e(TAG, "Error: ", e);
+                // If the code didn't successfully get the weather data, there's no point in attemping
+                // to parse it.
+                return null;
+            } finally {
+                if (urlConnection != null) {
+                    urlConnection.disconnect();
+                }
+                if (reader != null) {
+                    try {
+                        reader.close();
+                    } catch (final IOException e) {
+                        Log.e(TAG, "Error closing stream", e);
+                    }
+                }
+            }
+
+            return forecastJsonStr;
+        }
+
+        protected void onPostExecute(String result) {
+            //return result;
+        }
+
     }
 }
